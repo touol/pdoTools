@@ -48,6 +48,7 @@ class pdoFetch extends pdoTools
 
                 'additionalPlaceholders' => '',
                 'useWeblinkUrl' => false,
+                'subpdo'=> false,
             ), $config),
             $clean_timings);
 
@@ -78,6 +79,7 @@ class pdoFetch extends pdoTools
     public function run()
     {
         $this->makeQuery();
+        $this->genSubPdo();
         $this->addTVFilters();
         $this->addTVs();
         $this->addJoins();
@@ -88,6 +90,7 @@ class pdoFetch extends pdoTools
         $this->prepareQuery();
 
         $output = '';
+        
         if (strtolower($this->config['return']) == 'sql') {
             $this->addTime('Returning raw sql query');
             $output = $this->query->toSQL();
@@ -170,6 +173,8 @@ class pdoFetch extends pdoTools
                 $this->modx->log(modX::LOG_LEVEL_INFO, '[pdoTools] ' . $this->query->toSQL());
                 $errors = $this->query->stmt->errorInfo();
                 $this->modx->log(modX::LOG_LEVEL_ERROR, '[pdoTools] Error ' . $errors[0] . ': ' . $errors[2]);
+                //$this->modx->log(modX::LOG_LEVEL_ERROR, '[pdoTools] Error ' . $this->query->toSQL());
+                
                 $this->addTime('Could not process query, error #' . $errors[1] . ': ' . $errors[2]);
             }
         }
@@ -185,10 +190,41 @@ class pdoFetch extends pdoTools
     {
         $time = microtime(true);
         $this->query = $this->modx->newQuery($this->config['class']);
+        //Add alias for FROM table.
+        if(!empty($this->config['alias'])) $this->query->setClassAlias($this->config['alias']);
         $this->addTime('xPDO query object created', microtime(true) - $time);
     }
-
-
+    
+    /**
+     * genSubPdo
+     */
+    public function genSubPdo()
+    {
+        if(!empty($this->config['subpdo'])){
+            $sub_default = [];
+            $tmp = $this->config['subpdo'];
+            if (is_string($tmp) && ($tmp[0] == '{' || $tmp[0] == '[')) {
+                $tmp = json_decode($tmp, true);
+            }
+            foreach($tmp as $k => $subpdo){
+                $sub_default[$k] = $this->getSubSelectSQL($subpdo);
+            }
+            $pdoKeys = array('innerJoin', 'leftJoin', 'rightJoin', 'select', 'where', 'sortby', 'limit');
+            $pdoConfig = array();
+            foreach($pdoKeys as $pdoKey){
+                if(!empty($this->config[$pdoKey])) $pdoConfig[$pdoKey] = $this->config[$pdoKey];
+            }
+            //echo "<pre>".print_r($pdoConfig,1)."</pre>";
+            array_walk_recursive($pdoConfig,array(&$this, 'walkFunc'),$sub_default);
+            $this->config = array_merge($this->config, $pdoConfig);
+        }
+    }
+    public function walkFunc(&$item, $key, $sub_default){
+        if(is_string($item)){
+            if(preg_match($this->config['fenomSyntax'], $item)) $item = $this->getChunk("@INLINE ".$item, ['subpdo'=>$sub_default]);
+        }
+    }
+    
     /**
      * Adds where and having conditions
      */
@@ -307,21 +343,92 @@ class pdoFetch extends pdoTools
                     $class = !empty($v['class']) ? $v['class'] : $k;
                     $alias = !empty($v['alias']) ? $v['alias'] : $k;
                     $on = !empty($v['on']) ? $v['on'] : array();
+                    
                     if (!is_numeric($alias) && !is_numeric($class)) {
-                        $this->query->$join($class, $alias, $on);
+                        if(!empty($v['subpdo'])){
+                            if(is_string($v['subpdo'])) $subSQL = $v['subpdo'];
+                            if(is_array($v['subpdo'])) $subSQL = $this->getSubSelectSQL($v['subpdo']);
+                            if($subSQL){
+                                $this->addTime('subSQL prepared <small>"' . $subSQL . '"</small>');
+                                //https://prisma-cms.com/topics/dzhoinyi-podzaprosov-sredstvami-xpdo-2159.html
+                                $joinSubSequence = array('innerJoin'=>'inner join', 'leftJoin'=>'left join', 'rightJoin'=>'right join');
+                                $this->query->query['from']['joins'][] = array(
+                                    "type" => $joinSubSequence[$join],
+                                    "table" => "({$subSQL})",
+                                    "alias" => $alias,
+                                    "conditions" => array(
+                                        new xPDOQueryCondition(array(
+                                            "sql" => $on,
+                                        )),
+                                    ),
+                                );
+                            }
+                        }else{
+                            $this->query->$join($class, $alias, $on);
+                        }
                         $this->addTime($join . 'ed <i>' . $class . '</i> as <b>' . $alias . '</b>',
                             microtime(true) - $time);
                         $this->aliases[$alias] = $class;
+                        
                     } else {
                         $this->addTime('Could not ' . $join . ' <i>' . $class . '</i> as <b>' . $alias . '</b>',
                             microtime(true) - $time);
                     }
                     $time = microtime(true);
+                    
                 }
             }
         }
     }
+    
+    /**
+     * PDO getSubSelectSQL
+     *
+     * @param $class
+     * @param string $where
+     * @param array $config
+     *
+     * @return sql|string
+     */
+    public function getSubSelectSQL($config = array())
+    {
+        /** @var pdoFetch $instance */
+        $fqn = $this->modx->getOption('pdoFetch.class', null, 'pdotools.pdofetch', true);
+        $path = $this->modx->getOption('pdofetch_class_path', null, MODX_CORE_PATH . 'components/pdotools/model/',
+            true);
+        if ($pdoClass = $this->modx->loadClass($fqn, $path, false, true)) {
+            $instance = new $pdoClass($this->modx, $config);
+        } else {
+            return false;
+        }
+        if (empty($config['class'])){
+            $this->addTime('Could not subpdo! empty class',
+                                microtime(true) - $time);
+            return false;
+        }
+        //$config['class'] = $class;
+        $config['limit'] = !isset($config['limit'])
+            ? 0
+            : (int)$config['limit'];
 
+        $instance->setConfig($config, true);
+        $instance->makeQuery();
+        $instance->genSubPdo();
+        $instance->addTVFilters();
+        $instance->addTVs();
+        $instance->addJoins();
+        $instance->addGrouping();
+        $instance->addSelects();
+        $instance->addWhere();
+        $instance->addSort();
+        $instance->prepareQuery();
+        //$instance->modx->exec('SET SQL_BIG_SELECTS = 1');
+        $sql = $instance->query->toSQL();
+        //$this->modx->setPlaceholder('pdoTools.log', $instance->getTime());
+        $this->addTime($instance->getTime());
+        
+        return $sql;
+    }
 
     /**
      * Add select of fields
@@ -358,14 +465,26 @@ class pdoFetch extends pdoTools
                 ) {
                     if ($fields == 'all' || $fields == '*' || empty($fields)) {
                         $fields = $this->modx->getSelectColumns($class, $alias);
+                        $this->addTime('Add selection of fields 1 <b>' . $class . '</b>: <small>'.$fields." !!!" . str_replace('`' . $alias . '`.',
+                            '', $fields) . '</small>', microtime(true) - $time);
                     } else {
+                        
                         $fields = $this->modx->getSelectColumns($class, $alias, '',
                             array_map('trim', explode(',', $fields)));
+                        $this->addTime('Add selection of fields 2<b>' . $class . '</b>: <small>'.$fields." !!!" . str_replace('`' . $alias . '`.',
+                            '', $fields) . '</small>', microtime(true) - $time);
                     }
                 }
 
                 if ($i == 0 && $this->config['setTotal']) {
-                    $fields = 'SQL_CALC_FOUND_ROWS ' . $fields;
+                    //Fixed error with SQL_CALC_FOUND_ROWS.
+                    if(is_array($fields)){
+                        $fields = implode(",",$fields);
+                        $fields = 'SQL_CALC_FOUND_ROWS ' . $fields;
+                    }else{
+                        $fields = 'SQL_CALC_FOUND_ROWS ' . $fields;
+                    }
+                    
                 }
 
                 if (is_string($fields) && strpos($fields, '(') !== false) {
@@ -378,14 +497,14 @@ class pdoFetch extends pdoTools
                         $field = str_replace('|', ',', $field);
                     }
                     $this->query->select($fields);
-                    $this->addTime('Added selection of <b>' . $class . '</b>: <small>' . str_replace('`' . $alias . '`.',
+                    $this->addTime('Added selection of 1 <b>' . $class . '</b>: <small>' . str_replace('`' . $alias . '`.',
                             '', implode(',', $fields)) . '</small>', microtime(true) - $time);
                 } else {
                     $this->query->select($fields);
                     if (is_array($fields)) {
                         $fields = current($fields) . ' AS ' . current(array_flip($fields));
                     }
-                    $this->addTime('Added selection of <b>' . $class . '</b>: <small>' . str_replace('`' . $alias . '`.',
+                    $this->addTime('Added selection of 2 <b>' . $class . '</b>: <small>' . str_replace('`' . $alias . '`.',
                             '', $fields) . '</small>', microtime(true) - $time);
                 }
 
@@ -1047,6 +1166,7 @@ class pdoFetch extends pdoTools
 
         $instance->setConfig($config, true);
         $instance->makeQuery();
+        $instance->genSubPdo();
         $instance->addTVFilters();
         $instance->addTVs();
         $instance->addJoins();
