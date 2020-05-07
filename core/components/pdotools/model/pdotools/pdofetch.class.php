@@ -201,27 +201,29 @@ class pdoFetch extends pdoTools
     public function genSubPdo()
     {
         if(!empty($this->config['subpdo'])){
-            $sub_default = [];
+            $sub_keys = [];
+            $sub_values = [];
             $tmp = $this->config['subpdo'];
             if (is_string($tmp) && ($tmp[0] == '{' || $tmp[0] == '[')) {
                 $tmp = json_decode($tmp, true);
             }
             foreach($tmp as $k => $subpdo){
-                $sub_default[$k] = $this->getSubSelectSQL($subpdo);
+                $sub_keys[] = '{$subpdo.'.$k.'}';
+                $sub_values[] = $this->getSubSelectSQL($subpdo);
             }
-            $pdoKeys = array('innerJoin', 'leftJoin', 'rightJoin', 'select', 'where', 'sortby', 'limit');
+            $pdoKeys = array('innerJoin', 'leftJoin', 'rightJoin', 'select', 'where', 'sortby', 'limit', 'groupby', 'having');
             $pdoConfig = array();
             foreach($pdoKeys as $pdoKey){
                 if(!empty($this->config[$pdoKey])) $pdoConfig[$pdoKey] = $this->config[$pdoKey];
             }
             //echo "<pre>".print_r($pdoConfig,1)."</pre>";
-            array_walk_recursive($pdoConfig,array(&$this, 'walkFunc'),$sub_default);
+            array_walk_recursive($pdoConfig,array(&$this, 'walkFunc'),['sub_keys'=>$sub_keys,'sub_values'=>$sub_values]);
             $this->config = array_merge($this->config, $pdoConfig);
         }
     }
-    public function walkFunc(&$item, $key, $sub_default){
+    public function walkFunc(&$item, $key, $sub){
         if(is_string($item)){
-            if(preg_match($this->config['fenomSyntax'], $item)) $item = $this->getChunk("@INLINE ".$item, ['subpdo'=>$sub_default]);
+            $item = str_replace($sub['sub_keys'],$sub['sub_values'],$item);
         }
     }
     
