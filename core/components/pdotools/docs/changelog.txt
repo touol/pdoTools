@@ -1,5 +1,9 @@
 Changelog for pdoTools.
 
+2.14.2 pl
+==============
+- Исправлена проблема с вложенными SQL функциями.
+
 2.14.0 pl
 ==============
 - Add subpdo query for join. https://modx.pro/topic/19864 and https://prisma-cms.com/topics/dzhoinyi-podzaprosov-sredstvami-xpdo-2159.html.
