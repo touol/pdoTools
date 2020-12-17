@@ -209,15 +209,19 @@ class pdoFetch extends pdoTools
             }
             foreach($tmp as $k => $subpdo){
                 $sub_keys[] = '{$subpdo.'.$k.'}';
-                $sub_values[] = $this->getSubSelectSQL($subpdo);
+                $sql0 = $this->getSubSelectSQL($subpdo);
+                
+                $sub_values[] = $sql0;
             }
             $pdoKeys = array('innerJoin', 'leftJoin', 'rightJoin', 'select', 'where', 'sortby', 'limit', 'groupby', 'having');
             $pdoConfig = array();
             foreach($pdoKeys as $pdoKey){
                 if(!empty($this->config[$pdoKey])) $pdoConfig[$pdoKey] = $this->config[$pdoKey];
             }
-            //echo "<pre>".print_r($pdoConfig,1)."</pre>";
-            array_walk_recursive($pdoConfig,array(&$this, 'walkFunc'),['sub_keys'=>$sub_keys,'sub_values'=>$sub_values]);
+            //$this->addTime("genSubPdo1 ".print_r($pdoConfig,1));
+            //array_walk_recursive($pdoConfig,array(&$this, 'walkFunc'),['sub_keys'=>$sub_keys,'sub_values'=>$sub_values]);
+            $pdoConfig = $this->walkFunc2($pdoConfig,['sub_keys'=>$sub_keys,'sub_values'=>$sub_values]);
+            //$this->addTime("genSubPdo2 ".print_r($pdoConfig,1));
             $this->config = array_merge($this->config, $pdoConfig);
         }
     }
@@ -225,6 +229,17 @@ class pdoFetch extends pdoTools
         if(is_string($item)){
             $item = str_replace($sub['sub_keys'],$sub['sub_values'],$item);
         }
+        //$key = str_replace($sub['sub_keys'],$sub['sub_values'],$key);
+    }
+    public function walkFunc2($array,$sub) {
+        if (!is_array($array)) return;
+        $helper = array();
+        foreach ($array as $key => $value) $helper[$this->sub_replace($key,$sub)] = is_array($value) ? $this->walkFunc2($value,$sub) : $this->sub_replace($value,$sub);
+        return $helper;
+    }
+    
+    public function sub_replace($item,$sub) {
+        return str_replace($sub['sub_keys'],$sub['sub_values'],$item);
     }
     
     /**
@@ -247,6 +262,8 @@ class pdoFetch extends pdoTools
         $where = $this->additionalConditions($where);
         if (!empty($where)) {
             $this->query->where($where);
+            //$this->query->prepare();
+            //$this->addTime('Added where condition: <b>' . $this->query->toSQL() . '</b>', microtime(true) - $time);
             $condition = array();
             foreach ($where as $k => $v) {
                 if (is_array($v)) {
@@ -404,8 +421,7 @@ class pdoFetch extends pdoTools
             return false;
         }
         if (empty($config['class'])){
-            $this->addTime('Could not subpdo! empty class',
-                                microtime(true) - $time);
+            $this->addTime('Could not subpdo! empty class', microtime(true) - $time);
             return false;
         }
         //$config['class'] = $class;
@@ -428,7 +444,7 @@ class pdoFetch extends pdoTools
         $sql = $instance->query->toSQL();
         //$this->modx->setPlaceholder('pdoTools.log', $instance->getTime());
         $this->addTime($instance->getTime());
-        
+        $this->addTime('SQL prepared <small>"' . $sql . '"</small>');
         return $sql;
     }
 
@@ -491,9 +507,10 @@ class pdoFetch extends pdoTools
 
                 if (is_string($fields) && strpos($fields, '(') !== false) {
                     // Commas in functions
-                    $fields = preg_replace_callback('/\(.*?\)/', function($matches) {
+                    $fields = preg_replace_callback('/\(.*?\bAS\b/i', function($matches) {
                         return str_replace(",", "|", $matches[0]);
                     }, $fields);
+                    
                     $fields = explode(',', $fields);
                     foreach ($fields as &$field) {
                         $field = str_replace('|', ',', $field);
@@ -658,7 +675,7 @@ class pdoFetch extends pdoTools
             $this->query->limit($limit, $offset);
             $this->addTime('Limited to <b>' . $limit . '</b>, offset <b>' . $offset . '</b>', microtime(true) - $time);
         }
-
+        
         return $this->query->prepare();
     }
 
