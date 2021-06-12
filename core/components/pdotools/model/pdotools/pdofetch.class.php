@@ -485,7 +485,9 @@ class pdoFetch extends pdoTools
                         $fields = $this->modx->getSelectColumns($class, $alias);
                         $this->addTime('Add selection of fields 1 <b>' . $class . '</b>: <small>'.$fields." !!!" . str_replace('`' . $alias . '`.',
                             '', $fields) . '</small>', microtime(true) - $time);
-                    } else {
+                    } elseif(preg_match('/DISTINCT/i',
+                        $fields)){
+                    }else {
                         
                         $fields = $this->modx->getSelectColumns($class, $alias, '',
                             array_map('trim', explode(',', $fields)));
