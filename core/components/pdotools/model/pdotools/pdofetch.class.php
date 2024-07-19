@@ -209,8 +209,8 @@ class pdoFetch extends pdoTools
             }
             foreach($tmp as $k => $subpdo){
                 $sub_keys[] = '{$subpdo.'.$k.'}';
-                $sql0 = $this->getSubSelectSQL($subpdo);
-                
+				$sql0 = $this->getSubSelectSQL($subpdo);
+				
                 $sub_values[] = $sql0;
             }
             $pdoKeys = array('innerJoin', 'leftJoin', 'rightJoin', 'select', 'where', 'sortby', 'limit', 'groupby', 'having');
@@ -220,8 +220,8 @@ class pdoFetch extends pdoTools
             }
             //$this->addTime("genSubPdo1 ".print_r($pdoConfig,1));
             //array_walk_recursive($pdoConfig,array(&$this, 'walkFunc'),['sub_keys'=>$sub_keys,'sub_values'=>$sub_values]);
-            $pdoConfig = $this->walkFunc2($pdoConfig,['sub_keys'=>$sub_keys,'sub_values'=>$sub_values]);
-            //$this->addTime("genSubPdo2 ".print_r($pdoConfig,1));
+			$pdoConfig = $this->walkFunc2($pdoConfig,['sub_keys'=>$sub_keys,'sub_values'=>$sub_values]);
+			//$this->addTime("genSubPdo2 ".print_r($pdoConfig,1));
             $this->config = array_merge($this->config, $pdoConfig);
         }
     }
@@ -229,19 +229,19 @@ class pdoFetch extends pdoTools
         if(is_string($item)){
             $item = str_replace($sub['sub_keys'],$sub['sub_values'],$item);
         }
-        //$key = str_replace($sub['sub_keys'],$sub['sub_values'],$key);
+		$key = str_replace($sub['sub_keys'],$sub['sub_values'],$key);
     }
-    public function walkFunc2($array,$sub) {
-        if (!is_array($array)) return;
-        $helper = array();
-        foreach ($array as $key => $value) $helper[$this->sub_replace($key,$sub)] = is_array($value) ? $this->walkFunc2($value,$sub) : $this->sub_replace($value,$sub);
-        return $helper;
-    }
-    
+	public function walkFunc2($array,$sub) {
+		if (!is_array($array)) return;
+		$helper = array();
+		foreach ($array as $key => $value) $helper[$this->sub_replace($key,$sub)] = is_array($value) ? $this->walkFunc2($value,$sub) : $this->sub_replace($value,$sub);
+		return $helper;
+	}
+	
     public function sub_replace($item,$sub) {
-        return str_replace($sub['sub_keys'],$sub['sub_values'],$item);
-    }
-    
+		return str_replace($sub['sub_keys'],$sub['sub_values'],$item);
+	}
+	
     /**
      * Adds where and having conditions
      */
@@ -262,8 +262,8 @@ class pdoFetch extends pdoTools
         $where = $this->additionalConditions($where);
         if (!empty($where)) {
             $this->query->where($where);
-            //$this->query->prepare();
-            //$this->addTime('Added where condition: <b>' . $this->query->toSQL() . '</b>', microtime(true) - $time);
+			//$this->query->prepare();
+			//$this->addTime('Added where condition: <b>' . $this->query->toSQL() . '</b>', microtime(true) - $time);
             $condition = array();
             foreach ($where as $k => $v) {
                 if (is_array($v)) {
@@ -464,9 +464,11 @@ class pdoFetch extends pdoTools
                     ? json_decode($tmp, true)
                     : array($this->config['class'] => $tmp);
             }
+			//$this->addTime('Add selection of fields 0<b>' . print_r($tmp,1), microtime(true) - $time);
             if (!is_array($tmp)) {
                 $tmp = array();
             }
+			//$this->addTime('Add selection of fields 01<b>' . print_r($tmp,1), microtime(true) - $time);
             $tmp = array_merge($tmp, $this->config['tvsSelect']);
             $i = 0;
             foreach ($tmp as $class => $fields) {
@@ -478,8 +480,8 @@ class pdoFetch extends pdoTools
                 } else {
                     $alias = $class;
                 }
-                if (is_string($fields) && !preg_match('/\b' . $alias . '\b|\bAS\b|\(|`/i',
-                        $fields) && isset($this->modx->map[$class])
+                if ((is_string($fields) && !preg_match('/\b' . $alias . '\b|\bAS\b|\(|`/i',
+                        $fields) && isset($this->modx->map[$class])) || $fields == '*'
                 ) {
                     if ($fields == 'all' || $fields == '*' || empty($fields)) {
                         $fields = $this->modx->getSelectColumns($class, $alias);
@@ -487,7 +489,8 @@ class pdoFetch extends pdoTools
                             '', $fields) . '</small>', microtime(true) - $time);
                     } elseif(preg_match('/DISTINCT/i',
                         $fields)){
-                    }else {
+						
+					}else {
                         
                         $fields = $this->modx->getSelectColumns($class, $alias, '',
                             array_map('trim', explode(',', $fields)));
@@ -510,12 +513,12 @@ class pdoFetch extends pdoTools
                 if (is_string($fields) && strpos($fields, '(') !== false) {
                     // Commas in functions
                     $fields = preg_replace_callback('/\(.*?\bAS\b/i', function($matches) {
-                        return str_replace(",", "|", $matches[0]);
+						return str_replace(",", "|", $matches[0]);
                     }, $fields);
-                    
+					
                     $fields = explode(',', $fields);
                     foreach ($fields as &$field) {
-                        $field = str_replace('|', ',', $field);
+						$field = str_replace('|', ',', $field);
                     }
                     $this->query->select($fields);
                     $this->addTime('Added selection of 1 <b>' . $class . '</b>: <small>' . str_replace('`' . $alias . '`.',
@@ -677,7 +680,7 @@ class pdoFetch extends pdoTools
             $this->query->limit($limit, $offset);
             $this->addTime('Limited to <b>' . $limit . '</b>, offset <b>' . $offset . '</b>', microtime(true) - $time);
         }
-        
+		
         return $this->query->prepare();
     }
 

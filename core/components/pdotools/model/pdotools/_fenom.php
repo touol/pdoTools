@@ -115,7 +115,7 @@ class FenomX extends Fenom
             $this->_allowed_funcs,
             array(
                 'rand' => 1,
-                'number_format' => 1,
+                // 'number_format' => 1,
             )
         );
 
@@ -139,14 +139,19 @@ class FenomX extends Fenom
                 'len' => 'Fenom\Modifier::length',
                 'length' => 'Fenom\Modifier::length',
                 'strlen' => 'Fenom\Modifier::length',
-                'number_format' => 'number_format',
-                'number' => 'number_format',
+                // 'number_format' => 'number_format',
+                // 'number' => 'number_format',
                 'reset' => 'reset',
                 'end' => 'end',
                 'abs' => 'abs',
             )
         );
 
+        $this->_modifiers['number_format'] =
+        $this->_modifiers['number'] = function ($number , int $decimals = 0 , string $dec_point = "." , string $thousands_sep = ",") {
+            if(is_string($number)) $number = (float)$number;
+            return number_format ($number, $decimals, $dec_point, $thousands_sep);
+        };
         // String Modifiers
 
         $this->_modifiers['lower'] =
